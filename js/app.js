@@ -1,7 +1,7 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.2.0';
+const APP_VERSION = '0.2.1';
 const RELEASES_URL = 'https://github.com/ericscalibur/Vouch/releases';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
@@ -496,9 +496,14 @@ function checkSheet(c, seed, theirRole) {
       none: `<p class="result bad">✗ Those words don't match. Treat this caller as unverified. Hang up and call ${esc(c.name)} back on a number you already know.</p>`,
       incomplete: `<p class="result warn">Enter all three words.</p>`,
     }[r];
+    // Once there's a verdict, the button just closes the panel. Editing the words re-arms Check.
+    if (r !== 'incomplete') { input.blur(); setButton('Done', closeSheet); }
   };
-  s.querySelector('#go').onclick = run;
-  input.onkeydown = e => { if (e.key === 'Enter') run(); };
+  const btn = s.querySelector('#go');
+  const setButton = (label, fn) => { btn.textContent = label; btn.onclick = fn; };
+  setButton('Check', run);
+  input.oninput = () => { out.innerHTML = ''; setButton('Check', run); };
+  input.onkeydown = e => { if (e.key === 'Enter') btn.click(); };
 }
 
 function manageSheet(c) {
