@@ -1,7 +1,7 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.1.2';
+const APP_VERSION = '0.1.3';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
 const HOLD_FOR_DURESS_MS = 1500;
@@ -180,7 +180,13 @@ function lockScreen() {
     hero: true,
     onPin: async pin => {
       if (Date.now() < lockedUntil) return `Too many tries. Wait ${Math.ceil((lockedUntil - Date.now()) / 1000)}s.`;
-      if (await V.unlock(pin)) { failures = 0; home(); return; }
+      if (await V.unlock(pin)) {
+        failures = 0; home();
+        let from = null;
+        try { from = sessionStorage.getItem('vouch.updatedFrom'); sessionStorage.removeItem('vouch.updatedFrom'); } catch {}
+        if (from && from !== APP_VERSION) toast(`Updated to version ${APP_VERSION}`);
+        return;
+      }
       failures++;
       if (failures >= 5) { lockedUntil = Date.now() + 30_000 * (failures - 4); return 'Too many tries. Wait 30 seconds.'; }
       return 'Wrong PIN';
@@ -537,6 +543,7 @@ function settings() {
       <button class="contact" id="help"><span class="name">How Vouch works</span><span class="chev">${icon.chev}</span></button>
       <button class="contact" id="pin"><span class="name">Change PIN</span><span class="chev">${icon.chev}</span></button>
       <button class="contact" id="lock"><span class="name">Lock now</span><span class="chev">${icon.chev}</span></button>
+      <button class="contact" id="update"><span><div class="name">Check for updates</div><div class="meta" id="update-meta">You have version ${APP_VERSION}</div></span><span class="chev">${icon.chev}</span></button>
     </div>
     <div class="spacer"></div>
     <button class="btn danger" id="wipe">Erase everything</button>
@@ -544,12 +551,26 @@ function settings() {
   wireBack(home);
   $('#help').onclick = help;
   $('#lock').onclick = relock;
+  $('#update').onclick = checkForUpdate;
   $('#pin').onclick = () => pinScreen({
-    title: 'New 6-digit PIN', back: settings,
+    title: 'Enter your current PIN', back: settings,
+    onPin: async current => {
+      if (Date.now() < lockedUntil) return `Too many tries. Wait ${Math.ceil((lockedUntil - Date.now()) / 1000)}s.`;
+      if (!(await V.checkPin(current))) {
+        failures++;
+        if (failures >= 5) { lockedUntil = Date.now() + 30_000 * (failures - 4); return 'Too many tries. Wait 30 seconds.'; }
+        return 'Wrong PIN';
+      }
+      failures = 0;
+      newPin();
+    },
+  });
+  const newPin = () => pinScreen({
+    title: 'Choose a new 6-digit PIN', back: settings,
     onPin: async first => pinScreen({
-      title: 'Enter it again', back: settings,
+      title: 'Enter it again', back: newPin,
       onPin: async second => {
-        if (first !== second) return 'PINs didn’t match';
+        if (first !== second) { setTimeout(newPin, 700); return 'PINs didn’t match. Try again.'; }
         await V.changePin(first); toast('PIN changed'); settings();
       },
     }),
@@ -562,6 +583,40 @@ function settings() {
     d.querySelector('#cancel').onclick = closeSheet;
     d.querySelector('#yes').onclick = () => { V.wipe(); welcome(); };
   };
+}
+
+// Ask the browser to fetch the latest published version. If there is one, it is
+// installed in the background, then Vouch restarts into it (your PIN is needed again).
+async function checkForUpdate() {
+  const meta = $('#update-meta'), btn = $('#update');
+  const say = t => { if (meta) meta.textContent = t; };
+  const reg = await navigator.serviceWorker?.getRegistration();
+  if (!reg || !navigator.onLine) { say('You need to be online to check for updates'); return; }
+  btn.disabled = true;
+  say('Checking…');
+  try {
+    await reg.update();
+  } catch {
+    btn.disabled = false;
+    say('Couldn’t reach the update server. Try again later.');
+    return;
+  }
+  const incoming = reg.installing || reg.waiting;
+  if (!incoming) {
+    btn.disabled = false;
+    say(`You're up to date (version ${APP_VERSION})`);
+    return;
+  }
+  say('Downloading the new version…');
+  const restart = () => {
+    try { sessionStorage.setItem('vouch.updatedFrom', APP_VERSION); } catch {}
+    location.reload();
+  };
+  if (incoming.state === 'activated') return restart();
+  incoming.addEventListener('statechange', () => {
+    if (incoming.state === 'activated') restart();
+    if (incoming.state === 'redundant') { btn.disabled = false; say('Update failed. Try again.'); }
+  });
 }
 
 function help() {

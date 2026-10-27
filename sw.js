@@ -1,5 +1,5 @@
 // Offline-first: everything Vouch needs is cached on install. Bump VERSION on each release.
-const VERSION = 'vouch-v0.1.2';
+const VERSION = 'vouch-v0.1.3';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/core.js', 'js/vault.js', 'js/wordlist.js',

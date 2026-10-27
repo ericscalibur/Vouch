@@ -45,6 +45,18 @@ export async function unlock(pin) {
   }
 }
 
+// Verify a PIN without changing the unlocked state.
+export async function checkPin(pin) {
+  const stored = read();
+  const k = await deriveKey(pin, unb64u(stored.salt));
+  try {
+    await subtle.decrypt({ name: 'AES-GCM', iv: unb64u(stored.iv) }, k, unb64u(stored.ct));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function save() {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(data))));
