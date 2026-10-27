@@ -1,7 +1,7 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.1.0';
+const APP_VERSION = '0.1.1';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
 const HOLD_FOR_DURESS_MS = 1500;
@@ -243,7 +243,12 @@ function addContact() {
 }
 
 function inviteMessage(invite) {
-  return `Let's pair on Vouch so we can always prove it's really us on calls.\n\nMy invite:\n${invite}`;
+  const appUrl = location.origin + location.pathname.replace(/index\.html$/, '');
+  return `Let's pair on Vouch so we can always prove it's really us on calls.\n\n` +
+    `1. Get Vouch: ${appUrl}\n` +
+    `   (iPhone: open in Safari > Share > Add to Home Screen)\n` +
+    `2. Open it, tap "Add someone", and paste this whole message.\n\n` +
+    `My invite:\n${invite}`;
 }
 
 function pairing(id) {
