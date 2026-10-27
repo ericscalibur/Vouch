@@ -1,7 +1,7 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.2.2';
+const APP_VERSION = '0.2.3';
 const RELEASES_URL = 'https://github.com/ericscalibur/Vouch/releases';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
@@ -18,6 +18,8 @@ const findContact = id => contacts().find(c => c.id === id);
 const initial = name => esc((name.trim()[0] || '?').toUpperCase());
 const wordList = (words, cls = '') =>
   `<ol class="words ${cls}">${words.map((w, i) => `<li data-n="${i + 1}">${esc(w)}</li>`).join('')}</ol>`;
+// crypto.randomUUID needs iOS 15.4+; fall back for older iPhones.
+const newId = () => crypto.randomUUID?.() ?? C.b64u(crypto.getRandomValues(new Uint8Array(16)));
 const fmt = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 const icon = {
@@ -86,6 +88,14 @@ function closeSheet() {
 
 async function persist() {
   await V.save();
+}
+
+// Ask the browser to treat Vouch's storage as important, so it's never cleared
+// to free up space. There's no backup yet, so losing it would mean re-pairing everyone.
+async function keepStorage() {
+  try {
+    if (navigator.storage?.persist && !(await navigator.storage.persisted())) await navigator.storage.persist();
+  } catch { /* not supported: nothing to do */ }
 }
 
 // ---------- PIN pad ----------
@@ -165,6 +175,7 @@ function setupPin() {
         onPin: async second => {
           if (second !== first) { setTimeout(setupPin, 700); return 'PINs didn’t match. Try again.'; }
           await V.create(first);
+          keepStorage();
           home();
         },
       });
@@ -182,7 +193,7 @@ function lockScreen() {
     onPin: async pin => {
       if (Date.now() < lockedUntil) return `Too many tries. Wait ${Math.ceil((lockedUntil - Date.now()) / 1000)}s.`;
       if (await V.unlock(pin)) {
-        failures = 0; home();
+        failures = 0; home(); keepStorage();
         let from = null;
         try { from = sessionStorage.getItem('vouch.updatedFrom'); sessionStorage.removeItem('vouch.updatedFrom'); } catch {}
         if (from && from !== APP_VERSION) toast(`Updated to version ${APP_VERSION}`);
@@ -252,7 +263,7 @@ function addContact() {
   next.onclick = async () => {
     next.disabled = true;
     const { pub, privJwk } = await C.generateKeyPair();
-    const c = { id: crypto.randomUUID(), name: input.value.trim(), status: 'pending', myPub: C.b64u(pub), privJwk, created: Date.now() };
+    const c = { id: newId(), name: input.value.trim(), status: 'pending', myPub: C.b64u(pub), privJwk, created: Date.now() };
     contacts().push(c);
     await persist();
     pairing(c.id);
