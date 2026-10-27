@@ -1,7 +1,7 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.2.1';
+const APP_VERSION = '0.2.2';
 const RELEASES_URL = 'https://github.com/ericscalibur/Vouch/releases';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
@@ -208,7 +208,7 @@ function home() {
             <span class="avatar ${c.status === 'paired' ? '' : 'pending'}">${initial(c.name)}</span>
             <span>
               <div class="name">${esc(c.name)}</div>
-              <div class="meta">${c.status === 'paired' ? 'Tap to verify a call' : 'Pairing not finished'}</div>
+              <div class="meta">${c.status === 'paired' ? 'Tap to verify a call' : c.theirPubPending ? 'Ready to compare words' : 'Pairing not finished'}</div>
             </span>
             <span class="chev">${icon.chev}</span>
           </button>`).join('')}
@@ -290,13 +290,21 @@ function pairing(id) {
         <button class="btn" id="copy">${icon.copy} Copy</button>
       </div>
     </section>
+    ${c.theirPubPending ? `
+    <section class="card accent">
+      <div class="step done"><b>✓</b><h2>Got ${esc(c.name)}'s invite</h2></div>
+      <p class="small">Make sure ${esc(c.name)} has yours too: let them scan the code above, or send it.</p>
+      <button class="btn ghost" id="replace" style="min-height:40px;font-size:15px">Wrong code? Replace it</button>
+    </section>
+    <div class="spacer"></div>
+    <button class="btn primary" id="compare">Next: compare words</button>` : `
     <section class="card">
       <div class="step"><b>2</b><h2>Add their invite</h2></div>
       <p class="small">They tap “Add someone” in their Vouch too, then send you theirs.</p>
       <button class="btn" id="scan">${icon.scan} Scan their code</button>
       <textarea class="field" id="paste" placeholder="…or paste their invite here" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
       <p class="small" id="paste-msg" style="color:var(--danger)"></p>
-    </section>`);
+    </section>`}`);
   wireBack(home);
 
   $('#copy').onclick = async () => {
@@ -306,15 +314,27 @@ function pairing(id) {
   $('#share')?.addEventListener('click', () => navigator.share({ text: inviteMessage(invite) }).catch(() => {}));
   $('#more').onclick = () => manageSheet(c);
 
-  const accept = text => {
+  // Keep their invite and stay on this screen, so your own code stays visible
+  // for them to scan (in person) or send (remote).
+  const accept = async text => {
     try {
       const theirPub = C.parseInvite(text);
       C.roleFor(C.unb64u(c.myPub), theirPub);
-      confirmPair(id, theirPub);
+      c.theirPubPending = C.b64u(theirPub);
+      await persist();
+      navigator.vibrate?.(30);
+      toast(`Got ${c.name}'s invite`);
+      pairing(id);
     } catch (e) {
-      $('#paste-msg').textContent = e.message;
+      const msg = $('#paste-msg');
+      if (msg) msg.textContent = e.message; else toast(e.message);
     }
   };
+  if (c.theirPubPending) {
+    $('#compare').onclick = () => confirmPair(id, C.unb64u(c.theirPubPending));
+    $('#replace').onclick = async () => { delete c.theirPubPending; await persist(); pairing(id); };
+    return;
+  }
   $('#paste').oninput = e => { if (e.target.value.trim()) accept(e.target.value); };
   $('#scan').onclick = async () => {
     const text = await scanQR();
@@ -349,6 +369,7 @@ async function confirmPair(id, theirPub) {
     const seed = await C.deriveSeed(c.privJwk, myPub, theirPub);
     Object.assign(c, { status: 'paired', seed: C.b64u(seed), role: C.roleFor(myPub, theirPub), theirPub: C.b64u(theirPub), paired: Date.now() });
     delete c.privJwk; // only the shared seed is needed from now on
+    delete c.theirPubPending;
     await persist();
     toast(`Paired with ${c.name}`);
     verify(id);
@@ -362,6 +383,7 @@ async function confirmPair(id, theirPub) {
     s.querySelector('#retry').onclick = async () => {
       const { pub, privJwk } = await C.generateKeyPair();
       Object.assign(c, { myPub: C.b64u(pub), privJwk });
+      delete c.theirPubPending;
       await persist();
       pairing(id);
     };
