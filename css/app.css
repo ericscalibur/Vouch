@@ -61,6 +61,7 @@ button { cursor: pointer; }
   transition: transform .08s ease;
 }
 .btn:active { transform: scale(.98); }
+a.btn { text-decoration: none; }
 .btn.primary { background: var(--accent); color: var(--accent-ink); }
 .btn.danger { background: transparent; color: var(--danger); }
 .btn.ghost { background: transparent; color: var(--muted); }
@@ -68,6 +69,7 @@ button { cursor: pointer; }
 .btn svg { width: 20px; height: 20px; }
 .row { display: flex; gap: 10px; }
 .row > * { flex: 1; }
+.row > .btn { padding: 0 12px; white-space: nowrap; }
 
 /* ---------- cards ---------- */
 .card {

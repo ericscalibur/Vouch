@@ -1,7 +1,8 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.1.3';
+const APP_VERSION = '0.2.0';
+const RELEASES_URL = 'https://github.com/ericscalibur/Vouch/releases';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
 const HOLD_FOR_DURESS_MS = 1500;
@@ -199,6 +200,7 @@ function home() {
   const list = [...contacts()].sort((a, b) => a.name.localeCompare(b.name));
   render(`
     ${bar({ title: 'Vouch', right: `<button class="icon-btn" id="settings" aria-label="Settings">${icon.gear}</button>` })}
+    <div id="update-banner"></div>
     ${list.length ? `
       <div class="list">
         ${list.map(c => `
@@ -223,6 +225,7 @@ function home() {
       <button class="btn primary" id="add">${icon.plus} Add someone</button>`}
   `);
   $('#settings').onclick = settings;
+  drawUpdateBanner();
   $('#add').onclick = addContact;
   $app.querySelectorAll('.contact').forEach(el => {
     el.onclick = () => {
@@ -539,6 +542,7 @@ function manageSheet(c) {
 function settings() {
   render(`
     ${bar({ title: 'Settings', back: true })}
+    <div id="update-banner"></div>
     <div class="list">
       <button class="contact" id="help"><span class="name">How Vouch works</span><span class="chev">${icon.chev}</span></button>
       <button class="contact" id="pin"><span class="name">Change PIN</span><span class="chev">${icon.chev}</span></button>
@@ -550,6 +554,7 @@ function settings() {
     <p class="small" style="text-align:center">Vouch ${APP_VERSION} · works offline · nothing leaves this phone</p>`);
   wireBack(home);
   $('#help').onclick = help;
+  drawUpdateBanner();
   $('#lock').onclick = relock;
   $('#update').onclick = checkForUpdate;
   $('#pin').onclick = () => pinScreen({
@@ -585,8 +590,63 @@ function settings() {
   };
 }
 
-// Ask the browser to fetch the latest published version. If there is one, it is
-// installed in the background, then Vouch restarts into it (your PIN is needed again).
+// ---------- updates (always user-approved) ----------
+// The service worker keeps serving the version you approved. A newer published
+// version waits until you review it and tap Update. See sw.js.
+let updateAvailable = null;
+
+async function askWorker(type) {
+  const reg = await navigator.serviceWorker?.getRegistration();
+  if (!reg?.active) return null;
+  return new Promise(resolve => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = e => resolve(e.data);
+    reg.active.postMessage({ type }, [ch.port2]);
+    setTimeout(() => resolve(null), 3000);
+  });
+}
+
+async function refreshUpdateStatus() {
+  const status = await askWorker('status');
+  updateAvailable = status?.available || null;
+  drawUpdateBanner();
+}
+
+function drawUpdateBanner() {
+  const slot = $('#update-banner');
+  if (!slot) return;
+  slot.innerHTML = updateAvailable && V.isUnlocked() ? `
+    <section class="card accent">
+      <p class="label">Update available</p>
+      <p class="small">Version ${esc(updateAvailable)} is ready. Nothing changes until you choose to update.</p>
+      <div class="row">
+        <a class="btn" href="${RELEASES_URL}/tag/v${esc(updateAvailable)}" target="_blank" rel="noopener">What changed</a>
+        <button class="btn primary" id="apply-update">Update</button>
+      </div>
+    </section>` : '';
+  slot.querySelector('#apply-update')?.addEventListener('click', confirmUpdate);
+}
+
+function confirmUpdate() {
+  const v = updateAvailable;
+  const s = sheet(`
+    <h2>Update to version ${esc(v)}?</h2>
+    <p class="small">Only update if you trust the change. Read what changed first, or ask someone you trust who reads code.</p>
+    <a class="btn" href="${RELEASES_URL}/tag/v${esc(v)}" target="_blank" rel="noopener">What changed in ${esc(v)}</a>
+    <button class="btn primary" id="go-update">Update now</button>
+    <button class="btn ghost" id="not-now">Not now</button>
+    <p class="small" style="text-align:center">Vouch will restart and ask for your PIN. Your contacts stay as they are.</p>`);
+  s.querySelector('#not-now').onclick = closeSheet;
+  s.querySelector('#go-update').onclick = async () => {
+    const r = await askWorker('approve');
+    if (!r) { toast('Update failed. Try again.'); return; }
+    try { sessionStorage.setItem('vouch.updatedFrom', APP_VERSION); } catch {}
+    location.reload();
+  };
+}
+
+// Settings > Check for updates: look for a newer published version. It's
+// downloaded and kept ready for review, never applied automatically.
 async function checkForUpdate() {
   const meta = $('#update-meta'), btn = $('#update');
   const say = t => { if (meta) meta.textContent = t; };
@@ -596,27 +656,23 @@ async function checkForUpdate() {
   say('Checking…');
   try {
     await reg.update();
+    const incoming = reg.installing || reg.waiting;
+    if (incoming) {
+      await new Promise(resolve => {
+        const done = () => ['activated', 'redundant'].includes(incoming.state) && resolve();
+        incoming.addEventListener('statechange', done); done();
+      });
+    }
   } catch {
     btn.disabled = false;
     say('Couldn’t reach the update server. Try again later.');
     return;
   }
-  const incoming = reg.installing || reg.waiting;
-  if (!incoming) {
-    btn.disabled = false;
-    say(`You're up to date (version ${APP_VERSION})`);
-    return;
-  }
-  say('Downloading the new version…');
-  const restart = () => {
-    try { sessionStorage.setItem('vouch.updatedFrom', APP_VERSION); } catch {}
-    location.reload();
-  };
-  if (incoming.state === 'activated') return restart();
-  incoming.addEventListener('statechange', () => {
-    if (incoming.state === 'activated') restart();
-    if (incoming.state === 'redundant') { btn.disabled = false; say('Update failed. Try again.'); }
-  });
+  await refreshUpdateStatus();
+  btn.disabled = false;
+  say(updateAvailable
+    ? `Version ${updateAvailable} is ready to review above`
+    : `You're up to date (version ${APP_VERSION})`);
 }
 
 function help() {
@@ -629,6 +685,9 @@ function help() {
       <p>Open their name. You'll see <strong>your three words</strong> and <strong>the three words they should say</strong>. The words change every 3 minutes. If they can't say the right words, hang up and call them back on a number you know.</p>
       <h2>Duress words</h2>
       <p>If someone is forcing you to vouch, <strong>press and hold your words</strong> for a moment. They switch to duress words that look completely normal. A tiny dot by “You say” is your only clue. On the other phone, these words won't match. When they type them into “They said something different”, Vouch warns them quietly.</p>
+      <h2>Updates</h2>
+      <p>Vouch never updates itself. When a new version is published, you'll see <strong>Update available</strong> with a link to what changed. Nothing changes until you tap Update.</p>
+      <p>One honest limit: whoever hosts Vouch could publish a version that skips this step. If that worries you, run your own copy. The README explains how.</p>
       <h2>Good to know</h2>
       <p>Your phone's clock must be roughly right; automatic time is best. Vouch can't stop a scammer who calls you both at the same moment and relays words between you live. If anything feels off, hang up and call back.</p>
       <p>If you lose this phone or erase the app, pair again. There's no backup, by design.</p>
@@ -643,8 +702,6 @@ document.addEventListener('visibilitychange', () => {
   if (V.isUnlocked() && Date.now() - hiddenAt > AUTO_LOCK_MS) relock();
 });
 
-let updatePending = false;
-
 // Phone Back button: close the scanner or sheet, else go to the previous screen.
 // On a top-level screen (home, lock) it leaves the app as usual.
 history.replaceState({ vouch: 'base' }, '');
@@ -658,18 +715,12 @@ window.addEventListener('popstate', () => {
 });
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-  const hadController = !!navigator.serviceWorker.controller; // false on first install
   navigator.serviceWorker.register('sw.js').catch(() => {});
-  // A new version was installed in the background. Apply it now if that loses nothing (app locked),
-  // otherwise apply it the next time Vouch locks.
-  let reloaded = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloaded || !hadController) return;
-    if (!V.isUnlocked()) { reloaded = true; location.reload(); }
-    else updatePending = true;
-  });
+  // A newer version finished downloading: offer it. It is never applied without approval.
+  navigator.serviceWorker.addEventListener('controllerchange', refreshUpdateStatus);
+  navigator.serviceWorker.ready.then(refreshUpdateStatus);
 }
-const relock = () => { V.lock(); updatePending ? location.reload() : lockScreen(); };
+const relock = () => { V.lock(); lockScreen(); };
 
 if (!window.isSecureContext || !crypto.subtle) {
   render(`<div class="spacer"></div><h1 class="title">Open Vouch over https</h1>
