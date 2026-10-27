@@ -1,7 +1,7 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.1.1';
+const APP_VERSION = '0.1.2';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
 const HOLD_FOR_DURESS_MS = 1500;
@@ -37,9 +37,13 @@ const mark = `<svg class="hero-mark" viewBox="0 0 96 96" fill="none">
   <circle cx="26" cy="34" r="3" fill="#7ce0b5"/><circle cx="70" cy="34" r="3" fill="#7ce0b5"/>
 </svg>`;
 
+let backHandler = null;   // what the phone's Back button does on the current screen
+let scannerCancel = null;
+
 function render(html) {
   cleanups.forEach(fn => fn());
   cleanups = [];
+  backHandler = null;
   closeSheet();
   $app.innerHTML = `<main class="screen">${html}</main>`;
   window.scrollTo(0, 0);
@@ -52,6 +56,7 @@ function bar({ title = '', back = null, right = '' }) {
   </header>`;
 }
 function wireBack(fn) {
+  backHandler = fn;
   const b = $('[data-back]');
   if (b) b.onclick = fn;
 }
@@ -83,12 +88,13 @@ async function persist() {
 }
 
 // ---------- PIN pad ----------
-function pinScreen({ title, subtitle = '', back = null, onPin }) {
+function pinScreen({ title, subtitle = '', back = null, hero = false, onPin }) {
   let pin = '';
   render(`
     ${back ? bar({ title: '', back: true }) : ''}
     <div class="pin">
       <div>
+        ${hero ? `<div style="margin-bottom:16px">${mark}</div>` : ''}
         <p class="title" style="font-size:24px">${esc(title)}</p>
         ${subtitle ? `<p class="lead" style="margin-top:8px">${esc(subtitle)}</p>` : ''}
       </div>
@@ -169,7 +175,9 @@ const exists = () => V.exists();
 let failures = 0, lockedUntil = 0;
 function lockScreen() {
   pinScreen({
-    title: 'Enter your PIN',
+    title: 'Vouch is locked',
+    subtitle: 'Enter your PIN to open it.',
+    hero: true,
     onPin: async pin => {
       if (Date.now() < lockedUntil) return `Too many tries. Wait ${Math.ceil((lockedUntil - Date.now()) / 1000)}s.`;
       if (await V.unlock(pin)) { failures = 0; home(); return; }
@@ -379,12 +387,14 @@ function scanQR() {
     const finish = result => {
       if (done) return;
       done = true;
+      scannerCancel = null;
       stream.getTracks().forEach(t => t.stop());
       el.remove();
       resolve(result);
     };
-    el.querySelector('#scan-cancel').onclick = () => finish(null);
-    cleanups.push(() => finish(null));
+    scannerCancel = () => finish(null);
+    el.querySelector('#scan-cancel').onclick = scannerCancel;
+    cleanups.push(scannerCancel);
     const tick = () => {
       if (done) return;
       if (video.readyState >= 2 && video.videoWidth) {
@@ -533,7 +543,7 @@ function settings() {
     <p class="small" style="text-align:center">Vouch ${APP_VERSION} · works offline · nothing leaves this phone</p>`);
   wireBack(home);
   $('#help').onclick = help;
-  $('#lock').onclick = () => { V.lock(); lockScreen(); };
+  $('#lock').onclick = relock;
   $('#pin').onclick = () => pinScreen({
     title: 'New 6-digit PIN', back: settings,
     onPin: async first => pinScreen({
@@ -575,12 +585,36 @@ function help() {
 let hiddenAt = 0;
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { hiddenAt = Date.now(); return; }
-  if (V.isUnlocked() && Date.now() - hiddenAt > AUTO_LOCK_MS) { V.lock(); lockScreen(); }
+  if (V.isUnlocked() && Date.now() - hiddenAt > AUTO_LOCK_MS) relock();
+});
+
+let updatePending = false;
+
+// Phone Back button: close the scanner or sheet, else go to the previous screen.
+// On a top-level screen (home, lock) it leaves the app as usual.
+history.replaceState({ vouch: 'base' }, '');
+history.pushState({ vouch: 'top' }, '');
+window.addEventListener('popstate', () => {
+  if (scannerCancel) scannerCancel();
+  else if (document.querySelector('.overlay')) closeSheet();
+  else if (backHandler) backHandler();
+  else { history.back(); return; }
+  history.pushState({ vouch: 'top' }, '');
 });
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  const hadController = !!navigator.serviceWorker.controller; // false on first install
   navigator.serviceWorker.register('sw.js').catch(() => {});
+  // A new version was installed in the background. Apply it now if that loses nothing (app locked),
+  // otherwise apply it the next time Vouch locks.
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded || !hadController) return;
+    if (!V.isUnlocked()) { reloaded = true; location.reload(); }
+    else updatePending = true;
+  });
 }
+const relock = () => { V.lock(); updatePending ? location.reload() : lockScreen(); };
 
 if (!window.isSecureContext || !crypto.subtle) {
   render(`<div class="spacer"></div><h1 class="title">Open Vouch over https</h1>

@@ -1,5 +1,5 @@
 // Offline-first: everything Vouch needs is cached on install. Bump VERSION on each release.
-const VERSION = 'vouch-v0.1.1';
+const VERSION = 'vouch-v0.1.2';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/core.js', 'js/vault.js', 'js/wordlist.js',
@@ -8,7 +8,10 @@ const FILES = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's HTTP cache, so a new version never caches stale files.
+  e.waitUntil(caches.open(VERSION)
+    .then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
