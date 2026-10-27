@@ -48,6 +48,17 @@ To update a self-hosted copy, review the diff (`git fetch && git diff v0.2.0 v0.
 
 Run the tests with `npm test`.
 
+## Roadmap
+
+Ideas under consideration, not promises:
+
+- **Recovery phrase backup:** export an encrypted backup of your contacts, locked with a 12-word recovery phrase, and restore it on a new phone. No server, no email login.
+- **Phone-to-phone transfer:** move your contacts to a new phone by scanning a QR code from the old one.
+- **Two-channel pairing:** optionally mix in a secret split across two apps (e.g. WhatsApp + email), so an attacker must also read both.
+- **Biometric unlock:** Face ID / fingerprint instead of the PIN.
+- **More prominent mismatch check:** make it harder to miss a duress signal when words don't match.
+- **Multi-device sync:** keep contacts in step across your devices via end-to-end encrypted relays (e.g. Nostr). Only if people ask for it.
+
 ## License
 
 AGPL-3.0
