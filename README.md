@@ -34,19 +34,72 @@ If that risk matters to you, **self-host** (below). Then nobody but you can chan
 
 ## Run your own copy
 
-Vouch is static files: no build step, no backend. Anything that serves files over **https** works, because browsers only allow its encryption on secure origins.
+Vouch is static files: no build step, no backend, no database. Self-hosting means serving this folder from an address you control, then installing Vouch on your phone from that address.
+
+### What you need to know first
+
+- **It must be https.** Phones only allow Vouch's encryption and offline mode on secure (https) addresses. A plain LAN address like `http://192.168.1.50:8765` won't work; Vouch will say "Open Vouch over https". (`http://localhost` works for testing, but only in a browser on the same computer as the server.)
+- **The server is only needed to install and update.** Once installed, the whole app lives on your phone and works anywhere, offline, on any network. Your contacts are only ever stored on the phone, never on the server.
+- **Keep the address stable.** Your phone treats each address as a separate app with separate storage. If the address changes (a new IP, a different hostname), you get a fresh, empty Vouch and have to pair everyone again. Use a fixed hostname, not a raw IP.
+
+### 1. Get a copy you've reviewed
 
 ```sh
 git clone https://github.com/ericscalibur/Vouch.git
 cd Vouch
-git checkout v0.2.0   # pin to a release you've reviewed
+git tag                 # list releases
+git checkout v0.2.2     # pin to a release you've reviewed
+npm test                # optional: run the crypto tests (Node 20+)
 ```
 
-Then serve the folder with any static host: your own GitHub Pages fork, a home server (Start9, Umbrel, a Raspberry Pi behind Caddy or nginx), or any web server with a TLS certificate. For local testing, `python3 -m http.server` works on `localhost`.
+### 2. Serve it over https
 
-To update a self-hosted copy, review the diff (`git fetch && git diff v0.2.0 v0.2.1`), then check out the new tag. Install Vouch on your phone from **your** address. Each address keeps its own pairings, so pair again after switching hosts.
+Pick one:
 
-Run the tests with `npm test`.
+**Tailscale (easiest, private).** Gives you an https address with a real certificate that only your own devices can reach.
+
+1. In the Tailscale admin console, under **DNS**, enable **MagicDNS** and **HTTPS certificates**.
+2. On the computer hosting Vouch, inside the `Vouch` folder:
+   ```sh
+   python3 -m http.server 8765 --bind 127.0.0.1
+   ```
+3. In another terminal:
+   ```sh
+   tailscale serve --bg 8765
+   ```
+   Tailscale prints your address, like `https://yourmac.your-tailnet.ts.net/`.
+4. Install the Tailscale app on your phone and sign in to the same tailnet.
+
+The server only needs to be running when you install or update. For an always-on setup, run the web server as a background service.
+
+**Start9 / Umbrel / home server.** Serve the folder with any static web server (Caddy, nginx) on a box that already provides https. Start9 serves https using its own certificate authority: install its root certificate on your phone first, or the address won't count as secure. Test an install before relying on it.
+
+**A domain you own.** Point a domain at any server and use [Caddy](https://caddyserver.com), which gets a free Let's Encrypt certificate automatically:
+```
+vouch.example.com {
+    root * /path/to/Vouch
+    file_server
+}
+```
+This is public: anyone with the address can load the app (but never anyone's contacts).
+
+### 3. Install on your phone
+
+Open your https address on the phone, then:
+- **iPhone:** in **Safari**, tap Share → **Add to Home Screen**. It must be Safari.
+- **Android:** in **Chrome**, tap ⋮ → **Install app** (choose Install, not Create shortcut).
+
+Always open Vouch from the home screen icon.
+
+### 4. Updating
+
+Review the changes, then move to the new tag:
+```sh
+git fetch --tags
+git diff v0.2.2 v0.2.3   # read what changed
+git checkout v0.2.3
+```
+With the server reachable, open Vouch on your phone and go to **Settings → Check for updates**. Nothing changes until you tap **Update**.
 
 ## Roadmap
 
