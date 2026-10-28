@@ -1,11 +1,11 @@
 # Vouch
 
-Prove it's really you. Rotating 3-word codes shared between two people to beat deepfakes and voice cloning.
+Authenticate your closest contacts. Pair your phones once, then you can Vouch: rotating 3-word codes shared between two people to beat deepfakes and voice cloning.
 
 A cloned voice or deepfake video can sound like someone you love, but it can't produce words only the two of you share. Pair once with each person you trust. On any call after that, each of you reads out three words. If they match, it's really them.
 
 - **Offline PWA:** add it to your home screen on iOS or Android. No app store, no server, no accounts.
-- **Pair anywhere:** scan a QR code in person, or send an invite over any app and confirm 5 pairing words on a live video call.
+- **Pair anywhere:** scan a QR code in person, or send an invite over any app and confirm 5 pairing words over a channel you already trust with them (their usual number or email; a live video call if nothing better).
 - **Directional codes:** you each have different words, so an impostor can't just repeat yours back.
 - **Duress words:** press and hold your words to quietly signal you're under pressure.
 - **Encrypted on device:** contacts are locked behind a PIN.

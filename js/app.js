@@ -1,7 +1,7 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.2.4';
+const APP_VERSION = '0.2.5';
 const RELEASES_URL = 'https://github.com/ericscalibur/Vouch/releases';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
@@ -166,40 +166,46 @@ const installed = () => matchMedia('(display-mode: standalone)').matches || navi
 const chip = svg => `<span class="chip">${svg}</span>`;
 
 // Where "Add to Home Screen" lives depends on the phone and browser.
+const iosSteps = [
+  `Tap Share ${chip(icon.share)}. In Safari it's at the bottom (on newer iPhones, tap ${chip(icon.more)} first). In Chrome it's at the top.`,
+  `Scroll down and tap <strong>Add to Home Screen</strong>.`,
+  `Tap <strong>Add</strong>, then open Vouch from your home screen.`,
+];
+const iosNote = `On iPhone, the home screen app keeps its own storage. Finish setting up there, not in the browser. Don't see the option? Open this page in Safari.`;
+const androidSteps = [
+  `In Chrome, tap the menu ${chip(icon.kebab)} in the top right.`,
+  `Tap <strong>Add to Home screen</strong> (it may say <strong>Install app</strong>).`,
+  `If it asks, pick <strong>Install</strong>, not <strong>Create shortcut</strong>. Then confirm.`,
+];
+
 function installSteps() {
   const ua = navigator.userAgent;
   const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  if (ios) return {
-    steps: [
-      `Tap Share ${chip(icon.share)}. In Safari it's at the bottom (on newer iPhones, tap ${chip(icon.more)} first). In Chrome it's at the top.`,
-      `Scroll down and tap <strong>Add to Home Screen</strong>.`,
-      `Tap <strong>Add</strong>, then open Vouch from your home screen.`,
-    ],
-    note: `On iPhone, the home screen app keeps its own storage. Finish setting up there, not in the browser. Don't see the option? Open this page in Safari.`,
-  };
+  if (ios) return { groups: [{ steps: iosSteps }], note: iosNote };
   if (/Android/.test(ua)) {
-    if (/SamsungBrowser/.test(ua)) return { steps: [
+    if (/SamsungBrowser/.test(ua)) return { groups: [{ steps: [
       `Tap the menu ${chip(icon.menu)} at the bottom of the screen.`,
       `Tap <strong>Add page to</strong>, then <strong>Home screen</strong>.`,
       `Tap <strong>Add</strong>.`,
-    ] };
-    if (/Firefox/.test(ua)) return { steps: [
+    ] }] };
+    if (/Firefox/.test(ua)) return { groups: [{ steps: [
       `Tap the menu ${chip(icon.kebab)}.`,
       `Tap <strong>Install</strong> or <strong>Add to Home screen</strong>.`,
       `Tap <strong>Add</strong> to confirm.`,
-    ] };
-    return { steps: [
-      `Tap the menu ${chip(icon.kebab)} in the top right.`,
-      `Tap <strong>Add to Home screen</strong> (it may say <strong>Install app</strong>).`,
-      `If it asks, pick <strong>Install</strong>, not <strong>Create shortcut</strong>. Then confirm.`,
-    ] };
+    ] }] };
+    return { groups: [{ steps: androidSteps }] };
   }
-  return {
-    steps: [
-      `Vouch is made for your phone. Open this page on your phone and add it to your home screen there.`,
-      `On a computer, Chrome and Edge show an install icon at the right end of the address bar.`,
-    ],
-  };
+  // On a computer: Vouch belongs on a phone, so hand it over with a QR code.
+  return { desktop: true, groups: [{ label: 'Android', steps: androidSteps }, { label: 'iPhone', steps: iosSteps }], note: iosNote };
+}
+
+function pageQR(text = location.origin + location.pathname) {
+  try {
+    const qr = window.qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    return `<div class="qr">${qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true })}</div>`;
+  } catch { return ''; }
 }
 
 const demoWords = { mine: ['orbit', 'maple', 'garden'], theirs: ['rocket', 'tunnel', 'cherry'], duress: ['velvet', 'harbor', 'pencil'] };
@@ -208,12 +214,19 @@ const tourSlides = () => [
   ...(installed() ? [] : [{
     body: () => {
       const how = installSteps();
+      const list = steps => `<ol class="howto">${steps.map(s => `<li><span>${s}</span></li>`).join('')}</ol>`;
+      if (how.desktop) return `
+        <h1 class="title">Vouch lives on your phone</h1>
+        <p class="lead">Scan this with your phone's camera to open Vouch there. Then add it to your home screen.</p>
+        ${pageQR()}
+        ${how.groups.map(g => `<p class="label">${g.label}</p>${list(g.steps)}`).join('')}
+        <p class="small">${how.note}</p>`;
       return `
         <h1 class="title">First, put Vouch on your home screen</h1>
         <p class="lead">It then opens like an app, works offline, and is ready the moment a suspicious call comes in.</p>
         ${installPrompt ? `<button class="btn primary" id="install">${icon.plus} Install Vouch</button>
           <p class="small">Or do it from your browser's menu:</p>` : ''}
-        <ol class="howto">${how.steps.map(s => `<li><span>${s}</span></li>`).join('')}</ol>
+        ${list(how.groups[0].steps)}
         ${how.note ? `<p class="small">${how.note}</p>` : ''}`;
     },
     wire: next => {
@@ -230,17 +243,28 @@ const tourSlides = () => [
   {
     body: () => `
       ${mark}
-      <h1 class="title">Prove it's really you.</h1>
-      <p class="lead">A cloned voice or a deepfake video can sound just like someone you love. It can't produce the words only the two of you share.</p>`,
+      <h1 class="title">Authenticate your closest contacts.</h1>
+      <p class="lead">Pair your phones once. From then on, you can Vouch.</p>
+      <p class="small">In a world of deepfakes and voice cloning, Vouch gives you a means to authenticate your closest peers.</p>`,
   },
   {
     body: () => `
       <h1 class="title">Pair once with each person you trust</h1>
-      <p class="lead">Together, you scan each other's code. Far apart, you send it on any app. Then you each read out your pairing words. If they match, you're paired.</p>
-      <div class="demo" aria-hidden="true">
-        <section class="card"><p class="label">You read out</p>${wordList(demoWords.mine, 'compact')}</section>
-        <section class="card accent"><p class="label">Alex should read out</p>${wordList(demoWords.theirs, 'compact')}</section>
-      </div>`,
+      <p class="lead">There are two ways to do it.</p>
+      <section class="card accent">
+        <div class="way"><h2>Together</h2><span class="badge">Best</span></div>
+        <p class="small">Open Vouch on both phones and scan each other's code. That's it, you're paired.</p>
+        <div class="mock" aria-hidden="true">
+          <div class="step"><b>1</b><h2>Give Alex your invite</h2></div>
+          ${pageQR('Example only: open Vouch to get your own code.')}
+          <div class="step done"><b>✓</b><h2>Got Alex's invite</h2></div>
+          <span class="btn primary">We’ve both scanned</span>
+        </div>
+      </section>
+      <section class="card">
+        <div class="way"><h2>Far apart</h2></div>
+        <p class="small">Send your invite on any app. Then compare pairing words somewhere you already know it's them: their usual phone number, their usual email. A video call if there's nothing better.</p>
+      </section>`,
   },
   {
     body: () => `
@@ -385,7 +409,7 @@ function home() {
             <span class="avatar ${c.status === 'paired' ? '' : 'pending'}">${initial(c.name)}</span>
             <span>
               <div class="name">${esc(c.name)}</div>
-              <div class="meta">${c.status === 'paired' ? 'Tap to verify a call' : c.theirPubPending ? 'Ready to compare words' : 'Pairing not finished'}</div>
+              <div class="meta">${c.status === 'paired' ? 'Tap to verify a call' : c.theirPubPending ? (c.theirPubScanned ? 'Ready to finish pairing' : 'Ready to compare words') : 'Pairing not finished'}</div>
             </span>
             <span class="chev">${icon.chev}</span>
           </button>`).join('')}
@@ -470,11 +494,13 @@ function pairing(id) {
     ${c.theirPubPending ? `
     <section class="card accent">
       <div class="step done"><b>✓</b><h2>Got ${esc(c.name)}'s invite</h2></div>
-      <p class="small">Make sure ${esc(c.name)} has yours too: let them scan the code above, or send it.</p>
+      <p class="small">${c.theirPubScanned
+        ? `Now let ${esc(c.name)} scan your code above. Once you've both scanned, you're done.`
+        : `Make sure ${esc(c.name)} has yours too: let them scan the code above, or send it.`}</p>
       <button class="btn ghost" id="replace" style="min-height:40px;font-size:15px">Wrong code? Replace it</button>
     </section>
     <div class="spacer"></div>
-    <button class="btn primary" id="compare">Next: compare words</button>` : `
+    <button class="btn primary" id="compare">${c.theirPubScanned ? 'We’ve both scanned' : 'Next: compare words'}</button>` : `
     <section class="card">
       <div class="step"><b>2</b><h2>Add their invite</h2></div>
       <p class="small">They tap “Add someone” in their Vouch too, then send you theirs.</p>
@@ -493,11 +519,14 @@ function pairing(id) {
 
   // Keep their invite and stay on this screen, so your own code stays visible
   // for them to scan (in person) or send (remote).
-  const accept = async text => {
+  // A code scanned off their own screen, in person, can't have been swapped on
+  // the way, so that path skips reading out the pairing words.
+  const accept = async (text, scanned = false) => {
     try {
       const theirPub = C.parseInvite(text);
       C.roleFor(C.unb64u(c.myPub), theirPub);
       c.theirPubPending = C.b64u(theirPub);
+      if (scanned) c.theirPubScanned = true; else delete c.theirPubScanned;
       await persist();
       navigator.vibrate?.(30);
       toast(`Got ${c.name}'s invite`);
@@ -508,15 +537,46 @@ function pairing(id) {
     }
   };
   if (c.theirPubPending) {
-    $('#compare').onclick = () => confirmPair(id, C.unb64u(c.theirPubPending));
-    $('#replace').onclick = async () => { delete c.theirPubPending; await persist(); pairing(id); };
+    const theirPub = C.unb64u(c.theirPubPending);
+    $('#compare').onclick = () => c.theirPubScanned ? confirmInPerson(id, theirPub) : confirmPair(id, theirPub);
+    $('#replace').onclick = async () => { delete c.theirPubPending; delete c.theirPubScanned; await persist(); pairing(id); };
     return;
   }
   $('#paste').oninput = e => { if (e.target.value.trim()) accept(e.target.value); };
   $('#scan').onclick = async () => {
     const text = await scanQR();
-    if (text) accept(text);
+    if (text) accept(text, true);
   };
+}
+
+// Scanned in person: no need to read out words. But a QR can also arrive as a
+// screenshot, so check it really came off their phone before trusting it.
+function confirmInPerson(id, theirPub) {
+  const c = findContact(id);
+  const s = sheet(`
+    <h2>Finish pairing?</h2>
+    <p class="small">Only if both are true:</p>
+    <ol class="howto">
+      <li><span>You scanned ${esc(c.name)}'s code off <strong>their own phone</strong>, in person. Not a screenshot or a photo.</span></li>
+      <li><span>${esc(c.name)} has scanned yours too.</span></li>
+    </ol>
+    <button class="btn primary" id="finish">Yes, finish pairing</button>
+    <button class="btn ghost" id="words">No, compare words instead</button>`);
+  s.querySelector('#finish').onclick = () => finishPair(id, theirPub);
+  s.querySelector('#words').onclick = () => confirmPair(id, theirPub);
+}
+
+async function finishPair(id, theirPub) {
+  const c = findContact(id);
+  const myPub = C.unb64u(c.myPub);
+  const seed = await C.deriveSeed(c.privJwk, myPub, theirPub);
+  Object.assign(c, { status: 'paired', seed: C.b64u(seed), role: C.roleFor(myPub, theirPub), theirPub: C.b64u(theirPub), paired: Date.now() });
+  delete c.privJwk; // only the shared seed is needed from now on
+  delete c.theirPubPending;
+  delete c.theirPubScanned;
+  await persist();
+  toast(`Paired with ${c.name}`);
+  verify(id);
 }
 
 async function confirmPair(id, theirPub) {
@@ -526,13 +586,14 @@ async function confirmPair(id, theirPub) {
   render(`
     ${bar({ title: `Pair with ${c.name}`, back: true })}
     <h2 class="title">Make sure it's really ${esc(c.name)}</h2>
-    <p class="lead">Do this face to face, or on a live video call. Each of you reads your own words out loud.</p>
+    <p class="lead">Compare these somewhere you already know it's really ${esc(c.name)}: a call or text to their usual number, their usual email, an account you've used together for years.</p>
+    <p class="small">Use a video call only if there's nothing better. Voices and faces can be faked, so a channel you already trust is safer. Avoid the app you sent the invite on.</p>
     <section class="card">
-      <p class="label">You read out</p>
+      <p class="label">Your words</p>
       ${wordList(mine, 'compact')}
     </section>
     <section class="card accent">
-      <p class="label">${esc(c.name)} should read out</p>
+      <p class="label">${esc(c.name)}'s words should be</p>
       ${wordList(theirs, 'compact')}
     </section>
     <p class="small">Talking on a call? For extra safety, also ask a question only the real ${esc(c.name)} would know.</p>
@@ -541,26 +602,18 @@ async function confirmPair(id, theirPub) {
     <button class="btn danger" id="no">They don't match</button>`);
   wireBack(() => pairing(id));
 
-  $('#yes').onclick = async () => {
-    const myPub = C.unb64u(c.myPub);
-    const seed = await C.deriveSeed(c.privJwk, myPub, theirPub);
-    Object.assign(c, { status: 'paired', seed: C.b64u(seed), role: C.roleFor(myPub, theirPub), theirPub: C.b64u(theirPub), paired: Date.now() });
-    delete c.privJwk; // only the shared seed is needed from now on
-    delete c.theirPubPending;
-    await persist();
-    toast(`Paired with ${c.name}`);
-    verify(id);
-  };
+  $('#yes').onclick = () => finishPair(id, theirPub);
   $('#no').onclick = () => {
     const s = sheet(`
       <h2>Don't pair yet</h2>
       <p class="result bad">If the words differ, the invite may have been swapped on the way. Someone could be pretending to be ${esc(c.name)}.</p>
-      <p class="small">Throw this invite away. Send invites again over a different app, then compare the words on a live video call.</p>
+      <p class="small">Throw this invite away. Send invites again, then compare the words over a channel you already trust with ${esc(c.name)}, like their usual phone number.</p>
       <button class="btn primary" id="retry">Start over</button>`);
     s.querySelector('#retry').onclick = async () => {
       const { pub, privJwk } = await C.generateKeyPair();
       Object.assign(c, { myPub: C.b64u(pub), privJwk });
       delete c.theirPubPending;
+      delete c.theirPubScanned;
       await persist();
       pairing(id);
     };
@@ -724,7 +777,7 @@ function manageSheet(c) {
     const mine = await C.keyWords(C.unb64u(c.myPub));
     const theirs = await C.keyWords(C.unb64u(c.theirPub));
     sheet(`<h2>Pairing words</h2>
-      <p class="small">Use these to re-check your pairing face to face or on a live video call.</p>
+      <p class="small">Use these to re-check your pairing in person, or over a channel you already trust with them.</p>
       <p class="label">Yours</p>${wordList(mine, 'compact')}
       <p class="label">${esc(c.name)}'s</p>${wordList(theirs, 'compact')}`);
   });
@@ -884,7 +937,9 @@ function help() {
     ${bar({ title: 'How Vouch works', back: true })}
     <div class="prose">
       <h2>Pairing</h2>
-      <p>You and the other person swap invites, in person or over any app. Then you each read out your <strong>pairing words</strong> face to face or on a live video call. If they match, nobody swapped the invites, and your phones now share a secret no one else has.</p>
+      <p><strong>Together (best):</strong> open Vouch on both phones and scan each other's code. Scanning straight off their screen means nobody could have swapped the code, so you're done.</p>
+      <p><strong>Far apart:</strong> send your invites over any app. Then compare your <strong>pairing words</strong> somewhere you already know it's really them: their usual phone number, their usual email, an account you've used together for years. If they match, nobody swapped the invites on the way. Use a live video call only if there's nothing better, since voices and faces can be faked.</p>
+      <p>Either way, your phones now share a secret no one else has.</p>
       <h2>Verifying a call</h2>
       <p>Open their name. You'll see <strong>your three words</strong> and <strong>the three words they should say</strong>. The words change every 3 minutes. If they can't say the right words, hang up and call them back on a number you know.</p>
       <h2>Duress words</h2>

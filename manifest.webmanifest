@@ -1,7 +1,7 @@
 {
   "name": "Vouch",
   "short_name": "Vouch",
-  "description": "Prove it's really you. Rotating codes shared only between two people.",
+  "description": "Authenticate your closest contacts. Pair your phones once, then you can Vouch.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
