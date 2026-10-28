@@ -1,7 +1,7 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.2.3';
+const APP_VERSION = '0.2.4';
 const RELEASES_URL = 'https://github.com/ericscalibur/Vouch/releases';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
@@ -31,6 +31,8 @@ const icon = {
   scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>',
   share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>',
   copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
+  kebab: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
+  menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
   paste: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1"/></svg>',
 };
 
@@ -150,24 +152,188 @@ function pinScreen({ title, subtitle = '', back = null, hero = false, onPin }) {
 }
 
 // ---------- onboarding & lock ----------
-function welcome() {
+// Chrome and Edge on Android offer their own install prompt. Hold on to it so
+// the tour can show an Install button; elsewhere the tour explains the menu.
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  if (exists()) return; // already set up: let the browser show its usual prompt
+  e.preventDefault();
+  installPrompt = e;
+});
+window.addEventListener('appinstalled', () => { installPrompt = null; toast('Vouch is on your home screen'); });
+
+const installed = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const chip = svg => `<span class="chip">${svg}</span>`;
+
+// Where "Add to Home Screen" lives depends on the phone and browser.
+function installSteps() {
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (ios) return {
+    steps: [
+      `Tap Share ${chip(icon.share)}. In Safari it's at the bottom (on newer iPhones, tap ${chip(icon.more)} first). In Chrome it's at the top.`,
+      `Scroll down and tap <strong>Add to Home Screen</strong>.`,
+      `Tap <strong>Add</strong>, then open Vouch from your home screen.`,
+    ],
+    note: `On iPhone, the home screen app keeps its own storage. Finish setting up there, not in the browser. Don't see the option? Open this page in Safari.`,
+  };
+  if (/Android/.test(ua)) {
+    if (/SamsungBrowser/.test(ua)) return { steps: [
+      `Tap the menu ${chip(icon.menu)} at the bottom of the screen.`,
+      `Tap <strong>Add page to</strong>, then <strong>Home screen</strong>.`,
+      `Tap <strong>Add</strong>.`,
+    ] };
+    if (/Firefox/.test(ua)) return { steps: [
+      `Tap the menu ${chip(icon.kebab)}.`,
+      `Tap <strong>Install</strong> or <strong>Add to Home screen</strong>.`,
+      `Tap <strong>Add</strong> to confirm.`,
+    ] };
+    return { steps: [
+      `Tap the menu ${chip(icon.kebab)} in the top right.`,
+      `Tap <strong>Add to Home screen</strong> (it may say <strong>Install app</strong>).`,
+      `If it asks, pick <strong>Install</strong>, not <strong>Create shortcut</strong>. Then confirm.`,
+    ] };
+  }
+  return {
+    steps: [
+      `Vouch is made for your phone. Open this page on your phone and add it to your home screen there.`,
+      `On a computer, Chrome and Edge show an install icon at the right end of the address bar.`,
+    ],
+  };
+}
+
+const demoWords = { mine: ['orbit', 'maple', 'garden'], theirs: ['rocket', 'tunnel', 'cherry'], duress: ['velvet', 'harbor', 'pencil'] };
+
+const tourSlides = () => [
+  ...(installed() ? [] : [{
+    body: () => {
+      const how = installSteps();
+      return `
+        <h1 class="title">First, put Vouch on your home screen</h1>
+        <p class="lead">It then opens like an app, works offline, and is ready the moment a suspicious call comes in.</p>
+        ${installPrompt ? `<button class="btn primary" id="install">${icon.plus} Install Vouch</button>
+          <p class="small">Or do it from your browser's menu:</p>` : ''}
+        <ol class="howto">${how.steps.map(s => `<li><span>${s}</span></li>`).join('')}</ol>
+        ${how.note ? `<p class="small">${how.note}</p>` : ''}`;
+    },
+    wire: next => {
+      $('#install')?.addEventListener('click', async () => {
+        const p = installPrompt;
+        installPrompt = null;
+        await p.prompt();
+        const { outcome } = await p.userChoice;
+        if (outcome === 'accepted') next();
+        else welcome(0);
+      });
+    },
+  }]),
+  {
+    body: () => `
+      ${mark}
+      <h1 class="title">Prove it's really you.</h1>
+      <p class="lead">A cloned voice or a deepfake video can sound just like someone you love. It can't produce the words only the two of you share.</p>`,
+  },
+  {
+    body: () => `
+      <h1 class="title">Pair once with each person you trust</h1>
+      <p class="lead">Together, you scan each other's code. Far apart, you send it on any app. Then you each read out your pairing words. If they match, you're paired.</p>
+      <div class="demo" aria-hidden="true">
+        <section class="card"><p class="label">You read out</p>${wordList(demoWords.mine, 'compact')}</section>
+        <section class="card accent"><p class="label">Alex should read out</p>${wordList(demoWords.theirs, 'compact')}</section>
+      </div>`,
+  },
+  {
+    body: () => `
+      <h1 class="title">On a call, swap three words</h1>
+      <p class="lead">Open their name. You each say your words. If theirs match the screen, it's really them. The words change every 3 minutes.</p>
+      <div class="demo" aria-hidden="true">
+        <section class="card"><p class="label">You say</p>${wordList(demoWords.mine, 'compact')}</section>
+        <section class="card accent"><p class="label">Alex should say</p>${wordList(demoWords.theirs, 'compact')}</section>
+        <div class="timer"><div class="track"><div class="fill" style="width:62%"></div></div><span>1:52</span></div>
+      </div>`,
+  },
+  {
+    body: () => `
+      <h1 class="title">If someone is forcing you</h1>
+      <p class="lead">Press and hold your words. They switch to duress words that look completely normal. On the other phone they won't match, and Vouch quietly warns them.</p>
+      <section class="card say" id="demo-say">
+        <p class="label">You say<span class="dot" id="demo-dot"></span></p>
+        <div id="demo-words">${wordList(demoWords.mine, 'compact')}</div>
+      </section>
+      <p class="small" style="text-align:center">Try it: press and hold the card.</p>`,
+    wire: () => {
+      const say = $('#demo-say');
+      let duress = false, hold = null;
+      const start = () => {
+        hold = setTimeout(() => {
+          duress = !duress;
+          navigator.vibrate?.(15);
+          $('#demo-words').innerHTML = wordList(duress ? demoWords.duress : demoWords.mine, 'compact');
+          $('#demo-dot').classList.toggle('on', duress);
+        }, HOLD_FOR_DURESS_MS);
+      };
+      const cancel = () => clearTimeout(hold);
+      say.addEventListener('pointerdown', start);
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => say.addEventListener(ev, cancel));
+      say.addEventListener('contextmenu', e => e.preventDefault());
+      cleanups.push(cancel);
+    },
+  },
+  {
+    body: () => `
+      ${mark}
+      <h1 class="title">Everything stays on this phone</h1>
+      <p class="lead">No account, no server. Last step: choose a PIN. It locks Vouch and encrypts your contacts.</p>`,
+    last: true,
+  },
+];
+
+// A short tour before the PIN. It opens with how to install, unless Vouch
+// is already running from the home screen. at < 0 counts from the end.
+function welcome(at = 0) {
+  const slides = tourSlides();
+  const i = Math.max(0, Math.min(slides.length - 1, at < 0 ? slides.length + at : at));
+  const s = slides[i];
+  const go = n => welcome(n);
   render(`
+    <header class="bar tour-bar">
+      <div class="tour-dots">${slides.map((_, n) => `<i class="${n === i ? 'on' : ''}"></i>`).join('')}</div>
+      ${s.last ? '' : '<button class="btn ghost tour-skip" id="skip">Skip</button>'}
+    </header>
+    <div class="tour">${s.body()}</div>
     <div class="spacer"></div>
-    ${mark}
-    <h1 class="title">Prove it's really you.</h1>
-    <p class="lead">A cloned voice or a deepfake video can sound just like someone you love. It can't produce the words only the two of you share.</p>
-    <p class="lead">Pair once with each person you trust. On any call after that, you each read out three words. If they match, it's really them.</p>
-    <div class="spacer"></div>
-    <button class="btn primary" id="go">Get started</button>
-    <p class="small" style="text-align:center">Everything stays on this phone. No account, no server.</p>`);
-  $('#go').onclick = setupPin;
+    <div class="row">
+      ${i > 0 ? '<button class="btn" id="prev">Back</button>' : ''}
+      <button class="btn primary" id="next">${s.last ? 'Create your PIN' : 'Next'}</button>
+    </div>`);
+  const next = () => (s.last ? setupPin() : go(i + 1));
+  const prev = i > 0 ? () => go(i - 1) : null;
+  wireBack(prev);
+  $('#next').onclick = next;
+  $('#prev')?.addEventListener('click', prev);
+  $('#skip')?.addEventListener('click', () => go(-1));
+  s.wire?.(next);
+
+  // Swipe between slides.
+  let x0 = null;
+  const down = e => { x0 = e.touches[0].clientX; };
+  const up = e => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    x0 = null;
+    if (dx < -60) next();
+    else if (dx > 60 && prev) prev();
+  };
+  $app.addEventListener('touchstart', down, { passive: true });
+  $app.addEventListener('touchend', up);
+  cleanups.push(() => { $app.removeEventListener('touchstart', down); $app.removeEventListener('touchend', up); });
 }
 
 function setupPin() {
   pinScreen({
     title: 'Choose a 6-digit PIN',
     subtitle: 'It locks Vouch and encrypts your contacts on this phone.',
-    back: exists() ? null : welcome,
+    back: exists() ? null : () => welcome(-1),
     onPin: async first => {
       pinScreen({
         title: 'Enter it again',
@@ -313,7 +479,7 @@ function pairing(id) {
       <div class="step"><b>2</b><h2>Add their invite</h2></div>
       <p class="small">They tap “Add someone” in their Vouch too, then send you theirs.</p>
       <button class="btn" id="scan">${icon.scan} Scan their code</button>
-      <textarea class="field" id="paste" placeholder="…or paste their invite here" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+      <textarea class="field" id="paste" placeholder="Got their invite as a message? Copy the whole message and paste it here." autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
       <p class="small" id="paste-msg" style="color:var(--danger)"></p>
     </section>`}`);
   wireBack(home);
