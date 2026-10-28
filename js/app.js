@@ -1,7 +1,7 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.2.5';
+const APP_VERSION = '0.2.6';
 const RELEASES_URL = 'https://github.com/ericscalibur/Vouch/releases';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
@@ -211,6 +211,13 @@ function pageQR(text = location.origin + location.pathname) {
 const demoWords = { mine: ['orbit', 'maple', 'garden'], theirs: ['rocket', 'tunnel', 'cherry'], duress: ['velvet', 'harbor', 'pencil'] };
 
 const tourSlides = () => [
+  {
+    body: () => `
+      ${mark}
+      <h1 class="title">Authenticate your closest contacts.</h1>
+      <p class="lead">Pair your phones once. From then on, you can Vouch.</p>
+      <p class="small">In a world of deepfakes and voice cloning, Vouch gives you a means to authenticate your closest peers.</p>`,
+  },
   ...(installed() ? [] : [{
     body: () => {
       const how = installSteps();
@@ -229,31 +236,24 @@ const tourSlides = () => [
         ${list(how.groups[0].steps)}
         ${how.note ? `<p class="small">${how.note}</p>` : ''}`;
     },
-    wire: next => {
+    wire: (next, again) => {
       $('#install')?.addEventListener('click', async () => {
         const p = installPrompt;
         installPrompt = null;
         await p.prompt();
         const { outcome } = await p.userChoice;
         if (outcome === 'accepted') next();
-        else welcome(0);
+        else again();
       });
     },
   }]),
   {
     body: () => `
-      ${mark}
-      <h1 class="title">Authenticate your closest contacts.</h1>
-      <p class="lead">Pair your phones once. From then on, you can Vouch.</p>
-      <p class="small">In a world of deepfakes and voice cloning, Vouch gives you a means to authenticate your closest peers.</p>`,
-  },
-  {
-    body: () => `
       <h1 class="title">Pair once with each person you trust</h1>
       <p class="lead">There are two ways to do it.</p>
       <section class="card accent">
-        <div class="way"><h2>Together</h2><span class="badge">Best</span></div>
-        <p class="small">Open Vouch on both phones and scan each other's code. That's it, you're paired.</p>
+        <div class="way"><h2>Physical proximity</h2><span class="badge">Best</span></div>
+        <p class="small">Meet face-to-face with your contact and scan each other's QR codes. That's it, you're paired.</p>
         <div class="mock" aria-hidden="true">
           <div class="step"><b>1</b><h2>Give Alex your invite</h2></div>
           ${pageQR('Example only: open Vouch to get your own code.')}
@@ -268,7 +268,7 @@ const tourSlides = () => [
   },
   {
     body: () => `
-      <h1 class="title">On a call, swap three words</h1>
+      <h1 class="title">On any future calls, swap three words</h1>
       <p class="lead">Open their name. You each say your words. If theirs match the screen, it's really them. The words change every 3 minutes.</p>
       <div class="demo" aria-hidden="true">
         <section class="card"><p class="label">You say</p>${wordList(demoWords.mine, 'compact')}</section>
@@ -312,8 +312,8 @@ const tourSlides = () => [
   },
 ];
 
-// A short tour before the PIN. It opens with how to install, unless Vouch
-// is already running from the home screen. at < 0 counts from the end.
+// A short tour before the PIN. After the intro it shows how to install, unless
+// Vouch is already running from the home screen. at < 0 counts from the end.
 function welcome(at = 0) {
   const slides = tourSlides();
   const i = Math.max(0, Math.min(slides.length - 1, at < 0 ? slides.length + at : at));
@@ -336,7 +336,7 @@ function welcome(at = 0) {
   $('#next').onclick = next;
   $('#prev')?.addEventListener('click', prev);
   $('#skip')?.addEventListener('click', () => go(-1));
-  s.wire?.(next);
+  s.wire?.(next, () => go(i));
 
   // Swipe between slides.
   let x0 = null;
@@ -937,7 +937,7 @@ function help() {
     ${bar({ title: 'How Vouch works', back: true })}
     <div class="prose">
       <h2>Pairing</h2>
-      <p><strong>Together (best):</strong> open Vouch on both phones and scan each other's code. Scanning straight off their screen means nobody could have swapped the code, so you're done.</p>
+      <p><strong>Physical proximity (best):</strong> meet face-to-face and scan each other's QR codes. Scanning straight off their screen means nobody could have swapped the code, so you're done.</p>
       <p><strong>Far apart:</strong> send your invites over any app. Then compare your <strong>pairing words</strong> somewhere you already know it's really them: their usual phone number, their usual email, an account you've used together for years. If they match, nobody swapped the invites on the way. Use a live video call only if there's nothing better, since voices and faces can be faked.</p>
       <p>Either way, your phones now share a secret no one else has.</p>
       <h2>Verifying a call</h2>
