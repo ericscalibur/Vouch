@@ -9,7 +9,7 @@
 // these rules. See "Trust model" in the README. Self-hosting removes that risk.
 //
 // Bump VERSION on each release and tag the commit to match (v0.2.0, ...).
-const VERSION = 'vouch-v0.2.6';
+const VERSION = 'vouch-v0.2.7';
 const META = 'vouch-meta';
 const APPROVED_KEY = '/__vouch/approved';
 const FILES = [

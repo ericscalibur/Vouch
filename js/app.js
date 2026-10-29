@@ -1,7 +1,7 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.2.6';
+const APP_VERSION = '0.2.7';
 const RELEASES_URL = 'https://github.com/ericscalibur/Vouch/releases';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
@@ -152,17 +152,27 @@ function pinScreen({ title, subtitle = '', back = null, hero = false, onPin }) {
 }
 
 // ---------- onboarding & lock ----------
-// Chrome and Edge on Android offer their own install prompt. Hold on to it so
-// the tour can show an Install button; elsewhere the tour explains the menu.
+// Chrome and Edge on Android offer their own install dialog. Vouch never opens
+// it by itself: only when someone taps an "Add to Home Screen" button, and the
+// browser then asks them to confirm.
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', e => {
-  if (exists()) return; // already set up: let the browser show its usual prompt
   e.preventDefault();
   installPrompt = e;
+  drawInstallBanner();
 });
-window.addEventListener('appinstalled', () => { installPrompt = null; toast('Vouch is on your home screen'); });
+window.addEventListener('appinstalled', () => { installPrompt = null; drawInstallBanner(); toast('Vouch is on your Home Screen'); });
+
+async function askToInstall() {
+  const p = installPrompt;
+  if (!p) return false;
+  installPrompt = null; // each prompt can only be shown once
+  await p.prompt();
+  return (await p.userChoice).outcome === 'accepted';
+}
 
 const installed = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const chip = svg => `<span class="chip">${svg}</span>`;
 
 // Where "Add to Home Screen" lives depends on the phone and browser.
@@ -180,8 +190,7 @@ const androidSteps = [
 
 function installSteps() {
   const ua = navigator.userAgent;
-  const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  if (ios) return { groups: [{ steps: iosSteps }], note: iosNote };
+  if (isIOS()) return { groups: [{ steps: iosSteps }], note: iosNote };
   if (/Android/.test(ua)) {
     if (/SamsungBrowser/.test(ua)) return { groups: [{ steps: [
       `Tap the menu ${chip(icon.menu)} at the bottom of the screen.`,
@@ -199,6 +208,61 @@ function installSteps() {
   return { desktop: true, groups: [{ label: 'Android', steps: androidSteps }, { label: 'iPhone', steps: iosSteps }], note: iosNote };
 }
 
+// The how-to shared by the tour, the home screen banner and Settings.
+function installGuide({ note = true } = {}) {
+  const how = installSteps();
+  const list = steps => `<ol class="howto">${steps.map(s => `<li><span>${s}</span></li>`).join('')}</ol>`;
+  if (how.desktop) return `
+    <p class="lead">Scan this with your phone's camera to open Vouch there. Then add it to your home screen.</p>
+    ${pageQR()}
+    ${how.groups.map(g => `<p class="label">${g.label}</p>${list(g.steps)}`).join('')}
+    <p class="small">${how.note}</p>`;
+  return `
+    ${installPrompt ? `<button class="btn primary" data-install>${icon.plus} Add to Home Screen</button>
+      <p class="small">Your browser will ask you to confirm. Or do it yourself from the menu:</p>` : ''}
+    ${list(how.groups[0].steps)}
+    ${note && how.note ? `<p class="small">${how.note}</p>` : ''}`;
+}
+
+const installWhy = () => isIOS()
+  ? `On iPhone, Safari can erase Vouch's contacts if you don't open it for a while. The Home Screen app keeps them. It starts with its own fresh copy, so anyone you've paired with here, you'll pair with again there, once.`
+  : `Then Vouch opens from its own icon like any app, and your contacts are always in the same place.`;
+
+function installSheet() {
+  const s = sheet(`
+    <h2>Add Vouch to your Home Screen</h2>
+    <p class="small">${installWhy()}</p>
+    ${installGuide({ note: false })}
+    <button class="btn ghost" id="install-close">Close</button>`);
+  s.querySelector('[data-install]')?.addEventListener('click', () => { closeSheet(); askToInstall(); });
+  s.querySelector('#install-close').onclick = closeSheet;
+}
+
+// Home screen nudge while Vouch runs in a browser tab. "Not now" hides it for
+// good; Settings still has "Add to Home Screen".
+const BANNER_HIDDEN = 'vouch.installBannerHidden';
+function drawInstallBanner() {
+  const slot = $('#install-banner');
+  if (!slot) return;
+  let hidden = false;
+  try { hidden = localStorage.getItem(BANNER_HIDDEN) === '1'; } catch {}
+  slot.innerHTML = installed() || hidden ? '' : `
+    <section class="card accent">
+      <p class="label">Add Vouch to your Home Screen</p>
+      <p class="small">${isIOS() ? `On iPhone, Safari can erase your contacts if you don't open Vouch for a while. The Home Screen app keeps them.` : `Open Vouch from its own icon, like any app.`}</p>
+      <div class="row">
+        <button class="btn ghost" id="install-later">Not now</button>
+        <button class="btn primary" id="install-go">${installPrompt ? 'Add to Home Screen' : 'Show me how'}</button>
+      </div>
+    </section>`;
+  slot.querySelector('#install-go')?.addEventListener('click', () => (installPrompt ? askToInstall() : installSheet()));
+  slot.querySelector('#install-later')?.addEventListener('click', () => {
+    try { localStorage.setItem(BANNER_HIDDEN, '1'); } catch {}
+    drawInstallBanner();
+    toast('You can add it any time in Settings');
+  });
+}
+
 function pageQR(text = location.origin + location.pathname) {
   try {
     const qr = window.qrcode(0, 'M');
@@ -210,7 +274,8 @@ function pageQR(text = location.origin + location.pathname) {
 
 const demoWords = { mine: ['orbit', 'maple', 'garden'], theirs: ['rocket', 'tunnel', 'cherry'], duress: ['velvet', 'harbor', 'pencil'] };
 
-const tourSlides = () => [
+// replay: opened from Settings, so it ends back there instead of at the PIN.
+const tourSlides = (replay = false) => [
   {
     body: () => `
       ${mark}
@@ -219,32 +284,13 @@ const tourSlides = () => [
       <p class="small">In a world of deepfakes and voice cloning, Vouch gives you a means to authenticate your closest peers.</p>`,
   },
   ...(installed() ? [] : [{
-    body: () => {
-      const how = installSteps();
-      const list = steps => `<ol class="howto">${steps.map(s => `<li><span>${s}</span></li>`).join('')}</ol>`;
-      if (how.desktop) return `
-        <h1 class="title">Vouch lives on your phone</h1>
-        <p class="lead">Scan this with your phone's camera to open Vouch there. Then add it to your home screen.</p>
-        ${pageQR()}
-        ${how.groups.map(g => `<p class="label">${g.label}</p>${list(g.steps)}`).join('')}
-        <p class="small">${how.note}</p>`;
-      return `
-        <h1 class="title">First, put Vouch on your home screen</h1>
+    body: () => installSteps().desktop
+      ? `<h1 class="title">Vouch lives on your phone</h1>${installGuide()}`
+      : `<h1 class="title">First, put Vouch on your home screen</h1>
         <p class="lead">It then opens like an app, works offline, and is ready the moment a suspicious call comes in.</p>
-        ${installPrompt ? `<button class="btn primary" id="install">${icon.plus} Install Vouch</button>
-          <p class="small">Or do it from your browser's menu:</p>` : ''}
-        ${list(how.groups[0].steps)}
-        ${how.note ? `<p class="small">${how.note}</p>` : ''}`;
-    },
+        ${installGuide()}`,
     wire: (next, again) => {
-      $('#install')?.addEventListener('click', async () => {
-        const p = installPrompt;
-        installPrompt = null;
-        await p.prompt();
-        const { outcome } = await p.userChoice;
-        if (outcome === 'accepted') next();
-        else again();
-      });
+      $('[data-install]')?.addEventListener('click', async () => ((await askToInstall()) ? next() : again()));
     },
   }]),
   {
@@ -307,18 +353,24 @@ const tourSlides = () => [
     body: () => `
       ${mark}
       <h1 class="title">Everything stays on this phone</h1>
-      <p class="lead">No account, no server. Last step: choose a PIN. It locks Vouch and encrypts your contacts.</p>`,
+      ${replay
+        ? `<p class="lead">No account, no server. Your contacts never leave this phone.</p>`
+        : `<p class="lead">No account, no server. Last step: choose a PIN. It locks Vouch and encrypts your contacts.</p>`}
+      ${!replay && isIOS() && !installed() ? `<p class="result warn">You're setting up in the browser. On iPhone, the Home Screen app keeps its own copy of Vouch, and Safari can erase your contacts if you don't open it for a while. Best to add Vouch to your Home Screen and set up there.</p>` : ''}`,
     last: true,
   },
 ];
 
 // A short tour before the PIN. After the intro it shows how to install, unless
 // Vouch is already running from the home screen. at < 0 counts from the end.
-function welcome(at = 0) {
-  const slides = tourSlides();
+// replay: opened from Settings; Skip, Done and Back on the first slide return there.
+function welcome(at = 0, replay = false) {
+  const slides = tourSlides(replay);
   const i = Math.max(0, Math.min(slides.length - 1, at < 0 ? slides.length + at : at));
   const s = slides[i];
-  const go = n => welcome(n);
+  const go = n => welcome(n, replay);
+  // iPhone in Safari: offer the Home Screen first, but setting up here stays a choice.
+  const iosChoice = s.last && !replay && isIOS() && !installed();
   render(`
     <header class="bar tour-bar">
       <div class="tour-dots">${slides.map((_, n) => `<i class="${n === i ? 'on' : ''}"></i>`).join('')}</div>
@@ -328,14 +380,16 @@ function welcome(at = 0) {
     <div class="spacer"></div>
     <div class="row">
       ${i > 0 ? '<button class="btn" id="prev">Back</button>' : ''}
-      <button class="btn primary" id="next">${s.last ? 'Create your PIN' : 'Next'}</button>
-    </div>`);
-  const next = () => (s.last ? setupPin() : go(i + 1));
-  const prev = i > 0 ? () => go(i - 1) : null;
+      <button class="btn primary" id="next">${iosChoice ? 'Show me how' : s.last ? (replay ? 'Done' : 'Create your PIN') : 'Next'}</button>
+    </div>
+    ${iosChoice ? '<button class="btn ghost" id="here">Set up here anyway</button>' : ''}`);
+  const next = () => (!s.last ? go(i + 1) : replay ? settings() : setupPin());
+  const prev = i > 0 ? () => go(i - 1) : replay ? settings : null;
   wireBack(prev);
-  $('#next').onclick = next;
+  $('#next').onclick = iosChoice ? installSheet : next;
+  $('#here')?.addEventListener('click', setupPin);
   $('#prev')?.addEventListener('click', prev);
-  $('#skip')?.addEventListener('click', () => go(-1));
+  $('#skip')?.addEventListener('click', () => (replay ? settings() : go(-1)));
   s.wire?.(next, () => go(i));
 
   // Swipe between slides.
@@ -345,7 +399,7 @@ function welcome(at = 0) {
     if (x0 === null) return;
     const dx = e.changedTouches[0].clientX - x0;
     x0 = null;
-    if (dx < -60) next();
+    if (dx < -60 && !iosChoice) next();
     else if (dx > 60 && prev) prev();
   };
   $app.addEventListener('touchstart', down, { passive: true });
@@ -402,6 +456,7 @@ function home() {
   render(`
     ${bar({ title: 'Vouch', right: `<button class="icon-btn" id="settings" aria-label="Settings">${icon.gear}</button>` })}
     <div id="update-banner"></div>
+    <div id="install-banner"></div>
     ${list.length ? `
       <div class="list">
         ${list.map(c => `
@@ -427,6 +482,7 @@ function home() {
   `);
   $('#settings').onclick = settings;
   drawUpdateBanner();
+  drawInstallBanner();
   $('#add').onclick = addContact;
   $app.querySelectorAll('.contact').forEach(el => {
     el.onclick = () => {
@@ -802,15 +858,19 @@ function settings() {
     <div id="update-banner"></div>
     <div class="list">
       <button class="contact" id="help"><span class="name">How Vouch works</span><span class="chev">${icon.chev}</span></button>
+      <button class="contact" id="tour"><span class="name">Take the tour</span><span class="chev">${icon.chev}</span></button>
+      ${installed() ? '' : `<button class="contact" id="install"><span class="name">Add to Home Screen</span><span class="chev">${icon.chev}</span></button>`}
       <button class="contact" id="pin"><span class="name">Change PIN</span><span class="chev">${icon.chev}</span></button>
       <button class="contact" id="lock"><span class="name">Lock now</span><span class="chev">${icon.chev}</span></button>
-      <button class="contact" id="update"><span><div class="name">Check for updates</div><div class="meta" id="update-meta">You have version ${APP_VERSION}</div></span><span class="chev">${icon.chev}</span></button>
+      <button class="contact" id="update"><span><div class="name">Check for updates</div><div class="meta" id="update-meta">You have version ${APP_VERSION} · ${installed() ? 'Home Screen app' : 'in the browser'}</div></span><span class="chev">${icon.chev}</span></button>
     </div>
     <div class="spacer"></div>
     <button class="btn danger" id="wipe">Erase everything</button>
     <p class="small" style="text-align:center">Vouch ${APP_VERSION} · works offline · nothing leaves this phone</p>`);
   wireBack(home);
   $('#help').onclick = help;
+  $('#tour').onclick = () => welcome(0, true);
+  $('#install')?.addEventListener('click', installSheet);
   drawUpdateBanner();
   $('#lock').onclick = relock;
   $('#update').onclick = checkForUpdate;

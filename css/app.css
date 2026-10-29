@@ -167,6 +167,7 @@ textarea.field::placeholder { font-family: inherit; word-break: normal; }
   width: 100%; max-width: 520px; background: var(--surface); border-radius: 26px 26px 0 0;
   padding: 22px 20px calc(var(--safe-bottom) + 20px); display: flex; flex-direction: column; gap: 14px;
   animation: up .24s cubic-bezier(.2,.8,.2,1);
+  max-height: 92dvh; overflow-y: auto;
 }
 @keyframes up { from { transform: translateY(40px); opacity: .4; } }
 .sheet h2 { margin: 0; font-size: 22px; }
