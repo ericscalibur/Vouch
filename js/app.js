@@ -1,7 +1,7 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.2.7';
+const APP_VERSION = '0.2.8';
 const RELEASES_URL = 'https://github.com/ericscalibur/Vouch/releases';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
@@ -521,6 +521,7 @@ function inviteMessage(invite) {
   return `Let's pair on Vouch so we can always prove it's really us on calls.\n\n` +
     `1. Get Vouch: ${appUrl}\n` +
     `   (iPhone: open in Safari > Share > Add to Home Screen)\n` +
+    `   (Android: open in Chrome > ⋮ menu > Add to Home screen > Install)\n` +
     `2. Open it, tap "Add someone", and paste this whole message.\n\n` +
     `My invite:\n${invite}`;
 }
@@ -642,20 +643,21 @@ async function confirmPair(id, theirPub) {
   render(`
     ${bar({ title: `Pair with ${c.name}`, back: true })}
     <h2 class="title">Make sure it's really ${esc(c.name)}</h2>
-    <p class="lead">Compare these somewhere you already know it's really ${esc(c.name)}: a call or text to their usual number, their usual email, an account you've used together for years.</p>
-    <p class="small">Use a video call only if there's nothing better. Voices and faces can be faked, so a channel you already trust is safer. Avoid the app you sent the invite on.</p>
+    <p class="small">Compare these somewhere you already know it's really ${esc(c.name)}: their usual number, their usual email, an account you've used together for years. Use a video call only if there's nothing better, and not the app you sent the invite on.</p>
     <section class="card">
       <p class="label">Your words</p>
-      ${wordList(mine, 'compact')}
+      ${wordList(mine, 'compact flow')}
     </section>
     <section class="card accent">
       <p class="label">${esc(c.name)}'s words should be</p>
-      ${wordList(theirs, 'compact')}
+      ${wordList(theirs, 'compact flow')}
     </section>
-    <p class="small">Talking on a call? For extra safety, also ask a question only the real ${esc(c.name)} would know.</p>
+    <p class="small">On a call? Also ask something only the real ${esc(c.name)} would know.</p>
     <div class="spacer"></div>
-    <button class="btn primary" id="yes">All words match</button>
-    <button class="btn danger" id="no">They don't match</button>`);
+    <div class="actions">
+      <button class="btn primary" id="yes">All words match</button>
+      <button class="btn danger" id="no">They don't match</button>
+    </div>`);
   wireBack(() => pairing(id));
 
   $('#yes').onclick = () => finishPair(id, theirPub);
@@ -834,8 +836,8 @@ function manageSheet(c) {
     const theirs = await C.keyWords(C.unb64u(c.theirPub));
     sheet(`<h2>Pairing words</h2>
       <p class="small">Use these to re-check your pairing in person, or over a channel you already trust with them.</p>
-      <p class="label">Yours</p>${wordList(mine, 'compact')}
-      <p class="label">${esc(c.name)}'s</p>${wordList(theirs, 'compact')}`);
+      <p class="label">Yours</p>${wordList(mine, 'compact flow')}
+      <p class="label">${esc(c.name)}'s</p>${wordList(theirs, 'compact flow')}`);
   });
   s.querySelector('#del').onclick = () => {
     const d = sheet(`<h2>Remove ${esc(c.name)}?</h2>

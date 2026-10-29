@@ -89,6 +89,17 @@ a.btn { text-decoration: none; }
   width: 14px; font-variant-numeric: tabular-nums;
 }
 .words.compact li { font-size: 22px; font-weight: 650; }
+.words.flow { flex-direction: row; flex-wrap: wrap; gap: 4px 18px; }
+.words.flow li { gap: 6px; }
+.words.flow li::before { width: auto; }
+
+/* Main actions stay on screen while the content above scrolls. */
+.actions {
+  position: sticky; bottom: 0; z-index: 1;
+  display: flex; flex-direction: column; gap: 6px;
+  margin: 0 -20px; padding: 24px 20px calc(var(--safe-bottom) + 8px);
+  background: linear-gradient(transparent, var(--bg) 20px);
+}
 .say { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
 .dot { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--muted); margin-left: 6px; vertical-align: middle; opacity: 0; }
 .dot.on { opacity: .8; }
