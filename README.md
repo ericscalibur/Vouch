@@ -11,6 +11,8 @@ A cloned voice or deepfake video can sound like someone you love, but it can't p
 - **Encrypted on device:** contacts are locked behind a PIN.
 - **No surprise updates:** new versions wait for your approval.
 
+Want help securing your family against impersonation or protecting your Bitcoin? [The Bitcoin Hardware Store](https://tbhs.sv) offers private security sessions, in person in El Salvador or remotely.
+
 ## How it works
 
 Each pairing does a P-256 ECDH key exchange. Both phones derive the same 32-byte seed with HKDF, then every 3 minutes compute `HMAC(seed, direction ‖ time)` and show it as BIP39 words. Pairing words are a hash of each public key, so a swapped invite shows up as a mismatch. Everything uses the browser's built-in WebCrypto.

@@ -3,6 +3,8 @@ import * as V from './vault.js';
 
 const APP_VERSION = '0.2.8';
 const RELEASES_URL = 'https://github.com/ericscalibur/Vouch/releases';
+const CONTACT_EMAIL = 'ericscalibur@protonmail.com';
+const LIGHTNING_ADDRESS = 'ericscalibur@blink.sv';
 const PIN_LENGTH = 6;
 const AUTO_LOCK_MS = 60_000;
 const HOLD_FOR_DURESS_MS = 1500;
@@ -865,6 +867,7 @@ function settings() {
       <button class="contact" id="pin"><span class="name">Change PIN</span><span class="chev">${icon.chev}</span></button>
       <button class="contact" id="lock"><span class="name">Lock now</span><span class="chev">${icon.chev}</span></button>
       <button class="contact" id="update"><span><div class="name">Check for updates</div><div class="meta" id="update-meta">You have version ${APP_VERSION} · ${installed() ? 'Home Screen app' : 'in the browser'}</div></span><span class="chev">${icon.chev}</span></button>
+      <button class="contact" id="contact"><span class="name">Contact &amp; donate</span><span class="chev">${icon.chev}</span></button>
     </div>
     <div class="spacer"></div>
     <button class="btn danger" id="wipe">Erase everything</button>
@@ -876,6 +879,7 @@ function settings() {
   drawUpdateBanner();
   $('#lock').onclick = relock;
   $('#update').onclick = checkForUpdate;
+  $('#contact').onclick = contactScreen;
   $('#pin').onclick = () => pinScreen({
     title: 'Enter your current PIN', back: settings,
     onPin: async current => {
@@ -1014,6 +1018,25 @@ function help() {
       <p>If you lose this phone or erase the app, pair again. There's no backup, by design.</p>
     </div>`);
   wireBack(settings);
+}
+
+function contactScreen() {
+  render(`
+    ${bar({ title: 'Contact & donate', back: true })}
+    <div class="list">
+      <button class="contact" id="copy-email"><span><div class="name">Email</div><div class="meta">${esc(CONTACT_EMAIL)}</div></span><span class="chev">${icon.chev}</span></button>
+      <button class="contact" id="copy-lightning"><span><div class="name">Donate over Lightning</div><div class="meta">${esc(LIGHTNING_ADDRESS)}</div></span><span class="chev">${icon.chev}</span></button>
+    </div>
+    <p class="small" style="text-align:center">Tap either one to copy it. Vouch is free and open source, and donations help keep it that way.</p>`);
+  wireBack(settings);
+  const copy = (id, text, label) => {
+    $(id).onclick = async () => {
+      try { await navigator.clipboard.writeText(text); toast(`${label} copied`); }
+      catch { toast('Couldn’t copy. Long-press to select instead.'); }
+    };
+  };
+  copy('#copy-email', CONTACT_EMAIL, 'Email');
+  copy('#copy-lightning', LIGHTNING_ADDRESS, 'Lightning address');
 }
 
 // ---------- boot ----------
