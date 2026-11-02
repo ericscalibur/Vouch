@@ -1,8 +1,10 @@
 import * as C from './core.js';
 import * as V from './vault.js';
 
-const APP_VERSION = '0.2.8';
+const APP_VERSION = '0.2.9';
 const RELEASES_URL = 'https://github.com/ericscalibur/Vouch/releases';
+const GITHUB_URL = 'https://github.com/ericscalibur/Vouch';
+const TBHS_URL = 'https://tbhs.sv';
 const CONTACT_EMAIL = 'ericscalibur@protonmail.com';
 const LIGHTNING_ADDRESS = 'ericscalibur@blink.sv';
 const PIN_LENGTH = 6;
@@ -1026,8 +1028,10 @@ function contactScreen() {
     <div class="list">
       <button class="contact" id="copy-email"><span><div class="name">Email</div><div class="meta">${esc(CONTACT_EMAIL)}</div></span><span class="chev">${icon.chev}</span></button>
       <button class="contact" id="copy-lightning"><span><div class="name">Donate over Lightning</div><div class="meta">${esc(LIGHTNING_ADDRESS)}</div></span><span class="chev">${icon.chev}</span></button>
+      <a class="contact" href="${GITHUB_URL}" target="_blank" rel="noopener"><span><div class="name">Source code</div><div class="meta">github.com/ericscalibur/Vouch</div></span><span class="chev">${icon.chev}</span></a>
+      <a class="contact" href="${TBHS_URL}" target="_blank" rel="noopener"><span><div class="name">The Bitcoin Hardware Store</div><div class="meta">tbhs.sv</div></span><span class="chev">${icon.chev}</span></a>
     </div>
-    <p class="small" style="text-align:center">Tap either one to copy it. Vouch is free and open source, and donations help keep it that way.</p>`);
+    <p class="small" style="text-align:center">Tap the email or Lightning address to copy it. Vouch is free and open source, and donations help keep it that way.</p>`);
   wireBack(settings);
   const copy = (id, text, label) => {
     $(id).onclick = async () => {
